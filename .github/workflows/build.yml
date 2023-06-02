@@ -1,0 +1,172 @@
+on:
+  schedule:
+    - cron:  '0 0 * * 0'
+  workflow_dispatch:
+  repository_dispatch:
+    types: [webhook]
+  push:
+    paths-ignore:
+      - README.md
+    branches:
+      - master
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  ROOTFS_DIR: ${{ github.workspace }}/dotnet-rootfs
+  DOTNET_MAJOR_VERSION: 8
+  DOTNET_ARCH: x64
+  DOTNET_OS: haiku
+  CONFIGURATION: Debug
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install build dependencies
+        run: sudo apt install -y liblttng-ust-dev
+
+      # See https://github.com/actions/virtual-environments/issues/2606#issuecomment-772683150
+      - name: Chuck out the trash
+        run: |
+          sudo rm -rf /usr/local/lib/android # will release about 10 GB if you don't need Android
+          sudo rm -rf /usr/share/dotnet # will release about 20GB if you don't need .NET. All of our repos below install a private copy of .NET.
+
+      - name: Determine build ID
+        id: buildid
+        run: |
+          latestRev=""
+          today=$(date --utc +%Y%m%d)
+          releaseUrl="${{ github.server_url }}/${{ github.repository }}/releases/tag/net${{ env.DOTNET_MAJOR_VERSION }}-${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}-$today."
+          pageNum=1
+          while [ -z "$latestRev" ];
+          do
+              json=$(curl -s ${{ github.api_url }}/repos/${{ github.repository }}/releases?page=$pageNum)
+              pageNum=$((pageNum + 1))
+              if [ $(echo $json | jq length) -eq 0 ]; then
+                  # This means that we've passed the end and reached an empty array
+                  break
+              fi
+              if [ $(echo $json | jq 'objects // {} | has("message")') == "true" ]; then
+                  # API has return an error object
+                  echo "Unable to fetch releases from GitHub API"
+                  exit 2
+              fi
+              # Store array of revisions
+              revisions=($(echo $json | jq -e -r ".[] | .html_url | select(true)[${#releaseUrl}:]")) \
+                  || continue
+              latestRev=${revisions[0]}
+          done
+          if [ -z "$latestRev" ]; then
+              latestRev=0
+          fi
+          latestRev=$((latestRev + 1))
+          echo buildid=$today.$latestRev >> "$GITHUB_OUTPUT"
+
+      - name: Clone .NET Runtime
+        run: git clone https://github.com/trungnt2910/dotnet-runtime -b haiku-dotnet${{ env.DOTNET_MAJOR_VERSION }} --depth=1 ${{ github.workspace }}/runtime
+
+      - name: Build rootfs
+        run: ${{ github.workspace }}/runtime/eng/common/cross/build-rootfs.sh ${{ env.DOTNET_ARCH }} ${{ env.DOTNET_OS }}
+
+      - name: Build .NET Runtime
+        run: ${{ github.workspace }}/runtime/build.sh --ci -c ${{ env.CONFIGURATION }} -arch ${{ env.DOTNET_ARCH }} -os ${{ env.DOTNET_OS }} -cross -gcc /p:OfficialBuildId=${{ steps.buildid.outputs.buildid }}
+
+      - name: Extract tarballs
+        run: |
+          shopt -s extglob
+          mkdir ${{ github.workspace }}/output
+          pushd ${{ github.workspace }}/output
+          for f in ${{ github.workspace }}/runtime/artifacts/packages/${{ env.CONFIGURATION }}/Shipping/!(*symbols*).tar.gz; do tar xf "$f"; done
+          popd
+
+      - name: Clone .NET SDK
+        run: git clone https://github.com/trungnt2910/dotnet-sdk -b haiku-dotnet${{ env.DOTNET_MAJOR_VERSION }} --depth=1 ${{ github.workspace }}/sdk
+
+      - name: Build .NET SDK
+        run: |
+          ${{ github.workspace }}/sdk/build.sh --ci --pack -c ${{ env.CONFIGURATION }} /p:OSName=${{ env.DOTNET_OS }} /p:Architecture=${{ env.DOTNET_ARCH }} /p:OfficialBuildId=${{ steps.buildid.outputs.buildid }}
+
+          pushd ${{ github.workspace }}/sdk/artifacts/bin/redist/${{ env.CONFIGURATION }}/dotnet/sdk
+          sdkVersion=$(ls)
+
+          # Update RuntimeIdentifierGraph
+          cp -f ${{ github.workspace }}/runtime/src/libraries/Microsoft.NETCore.Platforms/src/runtime.json ./$sdkVersion/RuntimeIdentifierGraph.json
+
+          # Patch SDK properties, framework reference pack, and app host pack
+          # PLEASE DO NOT ASK ME WHAT THESE SED COMMANDS MEAN!
+
+          sed "s/<BundledNETCoreAppPackageVersion>.*<\/BundledNETCoreAppPackageVersion>/<BundledNETCoreAppPackageVersion>$sdkVersion<\/BundledNETCoreAppPackageVersion>/" <./$sdkVersion/Microsoft.NETCoreSdk.BundledVersions.props >./$sdkVersion/Microsoft.NETCoreSdk.BundledVersions.props
+          sed "s/<BundledNETCorePlatformsPackageVersion>.*<\/BundledNETCorePlatformsPackageVersion>/<BundledNETCorePlatformsPackageVersion>$sdkVersion<\/BundledNETCorePlatformsPackageVersion>/" <./$sdkVersion/Microsoft.NETCoreSdk.BundledVersions.props >./$sdkVersion/Microsoft.NETCoreSdk.BundledVersions.props
+
+          sed "s/<NETCoreSdkRuntimeIdentifier>.*<\/NETCoreSdkRuntimeIdentifier>/<NETCoreSdkRuntimeIdentifier>${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}<\/NETCoreSdkRuntimeIdentifier>/" <./$sdkVersion/Microsoft.NETCoreSdk.BundledVersions.props >./$sdkVersion/Microsoft.NETCoreSdk.BundledVersions.props
+          sed "s/<NETCoreSdkPortableRuntimeIdentifier>.*<\/NETCoreSdkPortableRuntimeIdentifier>/<NETCoreSdkPortableRuntimeIdentifier>${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}<\/NETCoreSdkPortableRuntimeIdentifier>/" <./$sdkVersion/Microsoft.NETCoreSdk.BundledVersions.props >./$sdkVersion/Microsoft.NETCoreSdk.BundledVersions.props
+
+          sed -r "s/(<KnownFrameworkReference.* DefaultRuntimeFrameworkVersion=\")${{ env.DOTNET_MAJOR_VERSION }}[^\"]*(\".* \/>)/\1$sdkVersion\2/" <./$sdkVersion/Microsoft.NETCoreSdk.BundledVersions.props >./$sdkVersion/Microsoft.NETCoreSdk.BundledVersions.props
+          sed -r "s/(<KnownFrameworkReference.* LatestRuntimeFrameworkVersion=\")${{ env.DOTNET_MAJOR_VERSION }}[^\"]*(\".* \/>)/\1$sdkVersion\2/" <./$sdkVersion/Microsoft.NETCoreSdk.BundledVersions.props >./$sdkVersion/Microsoft.NETCoreSdk.BundledVersions.props
+          sed -r "s/(<KnownFrameworkReference.* TargetingPackVersion=\")${{ env.DOTNET_MAJOR_VERSION }}[^\"]*(\".* \/>)/\1$sdkVersion\2/" <./$sdkVersion/Microsoft.NETCoreSdk.BundledVersions.props >./$sdkVersion/Microsoft.NETCoreSdk.BundledVersions.props
+          sed -r "s/(<KnownFrameworkReference.* DefaultRuntimeFrameworkVersion=\"$sdkVersion\".*RuntimePackRuntimeIdentifiers=\")([^\"]*)(\".* \/>)/\1\2;${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}\3/" <./$sdkVersion/Microsoft.NETCoreSdk.BundledVersions.props >./$sdkVersion/Microsoft.NETCoreSdk.BundledVersions.props
+
+          sed -r "s/(<KnownAppHostPack.* AppHostPackVersion=\")${{ env.DOTNET_MAJOR_VERSION }}[^\"]*(\".* \/>)/\1$sdkVersion\2/" <./$sdkVersion/Microsoft.NETCoreSdk.BundledVersions.props >./$sdkVersion/Microsoft.NETCoreSdk.BundledVersions.props
+          sed -r "s/(<KnownAppHostPack.* AppHostPackVersion=\"$sdkVersion\".*AppHostRuntimeIdentifiers=\")([^\"]*)(\".* \/>)/\1\2;${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}\3/" <./$sdkVersion/Microsoft.NETCoreSdk.BundledVersions.props >./$sdkVersion/Microsoft.NETCoreSdk.BundledVersions.props
+
+          # Other packs (at the time of writing, crossgen2 and ilcompiler) are not supported on Haiku
+
+          popd
+
+      - name: Copy .NET SDK
+        run: |
+          shopt -s extglob
+          # SDK
+          cp -r ${{ github.workspace }}/sdk/artifacts/bin/redist/${{ env.CONFIGURATION }}/dotnet/sdk ${{ github.workspace }}/output
+          # Templates
+          sdkVersion=$(ls ${{ github.workspace }}/output/sdk)
+          mkdir -p ${{ github.workspace }}/output/templates/$sdkVersion
+          cp ${{ github.workspace }}/sdk/artifacts/packages/Debug/Shipping/*Templates!(*symbols*).nupkg ${{ github.workspace }}/output/templates/$sdkVersion
+
+      - name: Create .NET tarball
+        run: |
+          pushd ${{ github.workspace }}/output
+          fileName=${{ github.workspace }}/net${{ env.DOTNET_MAJOR_VERSION }}-${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}-${{ steps.buildid.outputs.buildid }}
+          tar -cf $fileName.tar *
+          gzip -9 < $fileName.tar > $fileName.tar.gz
+          popd
+
+      - name: Upload .NET artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: net${{ env.DOTNET_MAJOR_VERSION }}-${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}-${{ steps.buildid.outputs.buildid }}.tar
+          path: ${{ github.workspace }}/net${{ env.DOTNET_MAJOR_VERSION }}-${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}-${{ steps.buildid.outputs.buildid }}.tar
+
+      - name: Upload .NET NuGet packages artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: dotnet-nuget
+          path: ${{ github.workspace }}/runtime/artifacts/packages/${{ env.CONFIGURATION }}/Shipping/*.nupkg
+
+      - name: Create release
+        uses: marvinpinto/action-automatic-releases@latest
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          automatic_release_tag: net${{ env.DOTNET_MAJOR_VERSION }}-${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}-${{ steps.buildid.outputs.buildid }}
+          prerelease: false
+          title: .NET ${{ env.DOTNET_MAJOR_VERSION }} for Haiku build ${{ steps.buildid.outputs.buildid }}
+          files: |
+            ${{ github.workspace }}/runtime/artifacts/packages/${{ env.CONFIGURATION }}/Shipping/*
+            ${{ github.workspace }}/sdk/artifacts/packages/${{ env.CONFIGURATION }}/Shipping/*
+            ${{ github.workspace }}/net${{ env.DOTNET_MAJOR_VERSION }}-${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}-${{ steps.buildid.outputs.buildid }}.tar.gz
+
+      - name: Publish NuGet packages on GitHub
+        run: |
+          shopt -s extglob
+          dotnet nuget add source --username ${{ github.repository_owner }} --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
+          # Do not upload symbol packages because:
+          # - No debugging support on Haiku yet.
+          # - Pushing symbols packages to GitHub Packages seems to fail with 403 Forbidden.
+          dotnet nuget push ${{ github.workspace }}/runtime/artifacts/packages/${{ env.CONFIGURATION }}/Shipping/!(*symbols*).nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source "github"
+          dotnet nuget push ${{ github.workspace }}/sdk/artifacts/packages/${{ env.CONFIGURATION }}/Shipping/!(*symbols*).nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source "github"
