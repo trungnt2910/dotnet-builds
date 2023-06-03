@@ -19,10 +19,12 @@ env:
   DOTNET_MAJOR_VERSION: 8
   DOTNET_ARCH: x64
   DOTNET_OS: haiku
-  CONFIGURATION: Debug
 
 jobs:
   build:
+    strategy:
+      matrix:
+        configuration: [Debug, Release]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -60,6 +62,7 @@ jobs:
               revisions=($(echo $json | jq -e -r ".[] | .html_url | select(true)[${#releaseUrl}:]")) \
                   || continue
               latestRev=${revisions[0]}
+              latestRev=${latestRev%-*}
           done
           if [ -z "$latestRev" ]; then
               latestRev=0
@@ -74,20 +77,20 @@ jobs:
         run: ${{ github.workspace }}/runtime/eng/common/cross/build-rootfs.sh ${{ env.DOTNET_ARCH }} ${{ env.DOTNET_OS }}
 
       - name: Build .NET Runtime
-        run: ${{ github.workspace }}/runtime/build.sh --ci -c ${{ env.CONFIGURATION }} -arch ${{ env.DOTNET_ARCH }} -os ${{ env.DOTNET_OS }} -cross -gcc /p:OfficialBuildId=${{ steps.buildid.outputs.buildid }}
+        run: ${{ github.workspace }}/runtime/build.sh --ci -c ${{ matrix.configuration }} -arch ${{ env.DOTNET_ARCH }} -os ${{ env.DOTNET_OS }} -cross -gcc /p:OfficialBuildId=${{ steps.buildid.outputs.buildid }}
 
       - name: Determine .NET version
         id: version
         run: |
           shopt -s extglob
-          echo version=$(sed -r 's/(.*Microsoft\.NETCore\.App\.Ref\.)(.*?)(\.nupkg)/\2/' <<< $(ls ${{ github.workspace }}/runtime/artifacts/packages/Debug/Shipping/Microsoft.NETCore.App.Ref.!(*symbols).nupkg)) >> "$GITHUB_OUTPUT"
+          echo version=$(sed -r 's/(.*Microsoft\.NETCore\.App\.Ref\.)(.*?)(\.nupkg)/\2/' <<< $(ls ${{ github.workspace }}/runtime/artifacts/packages/${{ matrix.configuration }}/Shipping/Microsoft.NETCore.App.Ref.!(*symbols).nupkg)) >> "$GITHUB_OUTPUT"
 
       - name: Extract tarballs
         run: |
           shopt -s extglob
           mkdir ${{ github.workspace }}/output
           pushd ${{ github.workspace }}/output
-          for f in ${{ github.workspace }}/runtime/artifacts/packages/${{ env.CONFIGURATION }}/Shipping/!(*symbols*).tar.gz; do tar xf "$f"; done
+          for f in ${{ github.workspace }}/runtime/artifacts/packages/${{ matrix.configuration }}/Shipping/!(*symbols*).tar.gz; do tar xf "$f"; done
           popd
 
       - name: Clone .NET SDK
@@ -95,11 +98,11 @@ jobs:
 
       - name: Build .NET SDK
         run: |
-          ${{ github.workspace }}/sdk/build.sh --ci --pack -c ${{ env.CONFIGURATION }} /p:OSName=${{ env.DOTNET_OS }} /p:Architecture=${{ env.DOTNET_ARCH }} /p:OfficialBuildId=${{ steps.buildid.outputs.buildid }}
+          ${{ github.workspace }}/sdk/build.sh --ci --pack -c ${{ matrix.configuration }} /p:OSName=${{ env.DOTNET_OS }} /p:Architecture=${{ env.DOTNET_ARCH }} /p:OfficialBuildId=${{ steps.buildid.outputs.buildid }}
 
           dotnetVersion=${{ steps.version.outputs.version }}
-          sdkFeatureBand=$(ls ${{ github.workspace }}/sdk/artifacts/bin/redist/${{ env.CONFIGURATION }}/dotnet/sdk)
-          pushd ${{ github.workspace }}/sdk/artifacts/bin/redist/${{ env.CONFIGURATION }}/dotnet/sdk/$sdkFeatureBand
+          sdkFeatureBand=$(ls ${{ github.workspace }}/sdk/artifacts/bin/redist/${{ matrix.configuration }}/dotnet/sdk)
+          pushd ${{ github.workspace }}/sdk/artifacts/bin/redist/${{ matrix.configuration }}/dotnet/sdk/$sdkFeatureBand
 
           # Update RuntimeIdentifierGraph
           cp -f ${{ github.workspace }}/runtime/src/libraries/Microsoft.NETCore.Platforms/src/runtime.json ./RuntimeIdentifierGraph.json
@@ -129,16 +132,16 @@ jobs:
         run: |
           shopt -s extglob
           # SDK
-          cp -r ${{ github.workspace }}/sdk/artifacts/bin/redist/${{ env.CONFIGURATION }}/dotnet/sdk ${{ github.workspace }}/output
+          cp -r ${{ github.workspace }}/sdk/artifacts/bin/redist/${{ matrix.configuration }}/dotnet/sdk ${{ github.workspace }}/output
           # Templates
           dotnetVersion=${{ steps.version.outputs.version }}
           mkdir -p ${{ github.workspace }}/output/templates/$dotnetVersion
-          cp ${{ github.workspace }}/sdk/artifacts/packages/Debug/Shipping/*Templates!(*symbols*).nupkg ${{ github.workspace }}/output/templates/$dotnetVersion
+          cp ${{ github.workspace }}/sdk/artifacts/packages/${{ matrix.configuration }}/Shipping/*Templates!(*symbols*).nupkg ${{ github.workspace }}/output/templates/$dotnetVersion
 
       - name: Create .NET tarball
         run: |
           pushd ${{ github.workspace }}/output
-          fileName=${{ github.workspace }}/net${{ env.DOTNET_MAJOR_VERSION }}-${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}-${{ steps.buildid.outputs.buildid }}
+          fileName=${{ github.workspace }}/net${{ env.DOTNET_MAJOR_VERSION }}-${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}-${{ steps.buildid.outputs.buildid }}-${{ matrix.configuration }}
           tar -cf $fileName.tar *
           gzip -9 < $fileName.tar > $fileName.tar.gz
           popd
@@ -146,33 +149,34 @@ jobs:
       - name: Upload .NET artifact
         uses: actions/upload-artifact@v3
         with:
-          name: net${{ env.DOTNET_MAJOR_VERSION }}-${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}-${{ steps.buildid.outputs.buildid }}.tar
-          path: ${{ github.workspace }}/net${{ env.DOTNET_MAJOR_VERSION }}-${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}-${{ steps.buildid.outputs.buildid }}.tar
+          name: net${{ env.DOTNET_MAJOR_VERSION }}-${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}-${{ steps.buildid.outputs.buildid }}-${{ matrix.configuration }}.tar
+          path: ${{ github.workspace }}/net${{ env.DOTNET_MAJOR_VERSION }}-${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}-${{ steps.buildid.outputs.buildid }}-${{ matrix.configuration }}.tar
 
       - name: Upload .NET NuGet packages artifact
         uses: actions/upload-artifact@v3
         with:
           name: dotnet-nuget
-          path: ${{ github.workspace }}/runtime/artifacts/packages/${{ env.CONFIGURATION }}/Shipping/*.nupkg
+          path: ${{ github.workspace }}/runtime/artifacts/packages/${{ matrix.configuration }}/Shipping/*.nupkg
 
       - name: Create release
         uses: marvinpinto/action-automatic-releases@latest
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          automatic_release_tag: net${{ env.DOTNET_MAJOR_VERSION }}-${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}-${{ steps.buildid.outputs.buildid }}
+          automatic_release_tag: net${{ env.DOTNET_MAJOR_VERSION }}-${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}-${{ steps.buildid.outputs.buildid }}-${{ matrix.configuration }}
           prerelease: false
-          title: .NET ${{ env.DOTNET_MAJOR_VERSION }} for Haiku ${{ env.DOTNET_ARCH }} build ${{ steps.buildid.outputs.buildid }}
+          title: .NET ${{ env.DOTNET_MAJOR_VERSION }} for Haiku ${{ env.DOTNET_ARCH }} build ${{ steps.buildid.outputs.buildid }} ${{ matrix.configuration }}
           files: |
-            ${{ github.workspace }}/runtime/artifacts/packages/${{ env.CONFIGURATION }}/Shipping/*
-            ${{ github.workspace }}/sdk/artifacts/packages/${{ env.CONFIGURATION }}/Shipping/*
-            ${{ github.workspace }}/net${{ env.DOTNET_MAJOR_VERSION }}-${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}-${{ steps.buildid.outputs.buildid }}.tar.gz
+            ${{ github.workspace }}/runtime/artifacts/packages/${{ matrix.configuration }}/Shipping/*
+            ${{ github.workspace }}/sdk/artifacts/packages/${{ matrix.configuration }}/Shipping/*
+            ${{ github.workspace }}/net${{ env.DOTNET_MAJOR_VERSION }}-${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}-${{ steps.buildid.outputs.buildid }}-${{ matrix.configuration }}.tar.gz
 
       - name: Publish NuGet packages on GitHub
+        if: ${{ matrix.configuration == 'Release' }}
         run: |
           shopt -s extglob
           dotnet nuget add source --username ${{ github.repository_owner }} --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
           # Do not upload symbol packages because:
           # - No debugging support on Haiku yet.
           # - Pushing symbols packages to GitHub Packages seems to fail with 403 Forbidden.
-          dotnet nuget push ${{ github.workspace }}/runtime/artifacts/packages/${{ env.CONFIGURATION }}/Shipping/!(*symbols*).nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source "github"
-          dotnet nuget push ${{ github.workspace }}/sdk/artifacts/packages/${{ env.CONFIGURATION }}/Shipping/!(*symbols*).nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source "github"
+          dotnet nuget push ${{ github.workspace }}/runtime/artifacts/packages/${{ matrix.configuration }}/Shipping/!(*symbols*).nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source "github"
+          dotnet nuget push ${{ github.workspace }}/sdk/artifacts/packages/${{ matrix.configuration }}/Shipping/!(*symbols*).nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source "github"
