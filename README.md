@@ -72,10 +72,6 @@ Not in the near future, because:
 
 More discussion can be found in [this](https://discuss.haiku-os.org/t/gsoc-2023-net-port/13237/44) forum comment and the following ones.
 
-### Why is this build so slow?
-
-This build of .NET is a **Debug** build. Release builds are currently not provided because of some weird bugs like [this one](https://github.com/dotnet/runtime/issues/55803#issuecomment-1547175040).
-
 ## License
 
 .NET binary releases and artifacts belong to the .NET Foundation and Contributors, and are covered by the [MIT License](https://github.com/dotnet/runtime/blob/main/LICENSE.TXT).
