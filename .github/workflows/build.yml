@@ -16,15 +16,19 @@ permissions:
 
 env:
   ROOTFS_DIR: ${{ github.workspace }}/dotnet-rootfs
-  DOTNET_MAJOR_VERSION: 8
-  DOTNET_ARCH: x64
-  DOTNET_OS: haiku
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     strategy:
       matrix:
-        configuration: [Debug, Release]
+        dotnet_major_version: [8]
+        dotnet_arch: [x64]
+        dotnet_os: [haiku]
+        dotnet_configuration: [Debug, Release]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -43,7 +47,7 @@ jobs:
         run: |
           latestRev=""
           today=$(date --utc +%Y%m%d)
-          releaseUrl="${{ github.server_url }}/${{ github.repository }}/releases/tag/net${{ env.DOTNET_MAJOR_VERSION }}-${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}-$today."
+          releaseUrl="${{ github.server_url }}/${{ github.repository }}/releases/tag/net${{ matrix.dotnet_major_version }}-${{ matrix.dotnet_os }}-${{ matrix.dotnet_arch }}-$today."
           pageNum=1
           while [ -z "$latestRev" ];
           do
@@ -59,7 +63,7 @@ jobs:
                   exit 2
               fi
               # Store array of revisions
-              revisions=($(echo $json | jq -e -r ".[] | .html_url | select(contains(\"$today\"))[${#releaseUrl}:]")) \
+              revisions=($(echo $json | jq -e -r ".[] | .html_url | select(contains(\"$today\") and contains(\"Release\"))[${#releaseUrl}:]")) \
                   || continue
               latestRev=${revisions[0]}
               latestRev=${latestRev%-*}
@@ -71,38 +75,38 @@ jobs:
           echo buildid=$today.$latestRev >> "$GITHUB_OUTPUT"
 
       - name: Clone .NET Runtime
-        run: git clone https://github.com/trungnt2910/dotnet-runtime -b haiku-dotnet${{ env.DOTNET_MAJOR_VERSION }} --depth=1 ${{ github.workspace }}/runtime
+        run: git clone https://github.com/trungnt2910/dotnet-runtime -b haiku-dotnet${{ matrix.dotnet_major_version }} --depth=1 ${{ github.workspace }}/runtime
 
       - name: Build rootfs
-        run: ${{ github.workspace }}/runtime/eng/common/cross/build-rootfs.sh ${{ env.DOTNET_ARCH }} ${{ env.DOTNET_OS }}
+        run: ${{ github.workspace }}/runtime/eng/common/cross/build-rootfs.sh ${{ matrix.dotnet_arch }} ${{ matrix.dotnet_os }}
 
       - name: Build .NET Runtime
-        run: ${{ github.workspace }}/runtime/build.sh --ci -c ${{ matrix.configuration }} -arch ${{ env.DOTNET_ARCH }} -os ${{ env.DOTNET_OS }} -cross -gcc /p:OfficialBuildId=${{ steps.buildid.outputs.buildid }}
+        run: ${{ github.workspace }}/runtime/build.sh --ci -c ${{ matrix.dotnet_configuration }} -arch ${{ matrix.dotnet_arch }} -os ${{ matrix.dotnet_os }} -cross -gcc /p:OfficialBuildId=${{ steps.buildid.outputs.buildid }}
 
       - name: Determine .NET version
         id: version
         run: |
           shopt -s extglob
-          echo version=$(sed -r 's/(.*Microsoft\.NETCore\.App\.Ref\.)(.*?)(\.nupkg)/\2/' <<< $(ls ${{ github.workspace }}/runtime/artifacts/packages/${{ matrix.configuration }}/Shipping/Microsoft.NETCore.App.Ref.!(*symbols).nupkg)) >> "$GITHUB_OUTPUT"
+          echo version=$(sed -r 's/(.*Microsoft\.NETCore\.App\.Ref\.)(.*?)(\.nupkg)/\2/' <<< $(ls ${{ github.workspace }}/runtime/artifacts/packages/${{ matrix.dotnet_configuration }}/Shipping/Microsoft.NETCore.App.Ref.!(*symbols).nupkg)) >> "$GITHUB_OUTPUT"
 
       - name: Extract tarballs
         run: |
           shopt -s extglob
           mkdir ${{ github.workspace }}/output
           pushd ${{ github.workspace }}/output
-          for f in ${{ github.workspace }}/runtime/artifacts/packages/${{ matrix.configuration }}/Shipping/!(*symbols*).tar.gz; do tar xf "$f"; done
+          for f in ${{ github.workspace }}/runtime/artifacts/packages/${{ matrix.dotnet_configuration }}/Shipping/!(*symbols*).tar.gz; do tar xf "$f"; done
           popd
 
       - name: Clone .NET SDK
-        run: git clone https://github.com/trungnt2910/dotnet-sdk -b haiku-dotnet${{ env.DOTNET_MAJOR_VERSION }} --depth=1 ${{ github.workspace }}/sdk
+        run: git clone https://github.com/trungnt2910/dotnet-sdk -b haiku-dotnet${{ matrix.dotnet_major_version }} --depth=1 ${{ github.workspace }}/sdk
 
       - name: Build .NET SDK
         run: |
-          ${{ github.workspace }}/sdk/build.sh --ci --pack -c ${{ matrix.configuration }} /p:OSName=${{ env.DOTNET_OS }} /p:Architecture=${{ env.DOTNET_ARCH }} /p:OfficialBuildId=${{ steps.buildid.outputs.buildid }}
+          ${{ github.workspace }}/sdk/build.sh --ci --pack -c ${{ matrix.dotnet_configuration }} /p:OSName=${{ matrix.dotnet_os }} /p:Architecture=${{ matrix.dotnet_arch }} /p:OfficialBuildId=${{ steps.buildid.outputs.buildid }}
 
           dotnetVersion=${{ steps.version.outputs.version }}
-          sdkFeatureBand=$(ls ${{ github.workspace }}/sdk/artifacts/bin/redist/${{ matrix.configuration }}/dotnet/sdk)
-          pushd ${{ github.workspace }}/sdk/artifacts/bin/redist/${{ matrix.configuration }}/dotnet/sdk/$sdkFeatureBand
+          sdkFeatureBand=$(ls ${{ github.workspace }}/sdk/artifacts/bin/redist/${{ matrix.dotnet_configuration }}/dotnet/sdk)
+          pushd ${{ github.workspace }}/sdk/artifacts/bin/redist/${{ matrix.dotnet_configuration }}/dotnet/sdk/$sdkFeatureBand
 
           # Update RuntimeIdentifierGraph
           cp -f ${{ github.workspace }}/runtime/src/libraries/Microsoft.NETCore.Platforms/src/runtime.json ./RuntimeIdentifierGraph.json
@@ -113,16 +117,16 @@ jobs:
           sed -ri "s/<BundledNETCoreAppPackageVersion>.*<\/BundledNETCoreAppPackageVersion>/<BundledNETCoreAppPackageVersion>$dotnetVersion<\/BundledNETCoreAppPackageVersion>/" ./Microsoft.NETCoreSdk.BundledVersions.props
           sed -ri "s/<BundledNETCorePlatformsPackageVersion>.*<\/BundledNETCorePlatformsPackageVersion>/<BundledNETCorePlatformsPackageVersion>$dotnetVersion<\/BundledNETCorePlatformsPackageVersion>/" ./Microsoft.NETCoreSdk.BundledVersions.props
 
-          sed -ri "s/<NETCoreSdkRuntimeIdentifier>.*<\/NETCoreSdkRuntimeIdentifier>/<NETCoreSdkRuntimeIdentifier>${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}<\/NETCoreSdkRuntimeIdentifier>/" ./Microsoft.NETCoreSdk.BundledVersions.props
-          sed -ri "s/<NETCoreSdkPortableRuntimeIdentifier>.*<\/NETCoreSdkPortableRuntimeIdentifier>/<NETCoreSdkPortableRuntimeIdentifier>${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}<\/NETCoreSdkPortableRuntimeIdentifier>/" ./Microsoft.NETCoreSdk.BundledVersions.props
+          sed -ri "s/<NETCoreSdkRuntimeIdentifier>.*<\/NETCoreSdkRuntimeIdentifier>/<NETCoreSdkRuntimeIdentifier>${{ matrix.dotnet_os }}-${{ matrix.dotnet_arch }}<\/NETCoreSdkRuntimeIdentifier>/" ./Microsoft.NETCoreSdk.BundledVersions.props
+          sed -ri "s/<NETCoreSdkPortableRuntimeIdentifier>.*<\/NETCoreSdkPortableRuntimeIdentifier>/<NETCoreSdkPortableRuntimeIdentifier>${{ matrix.dotnet_os }}-${{ matrix.dotnet_arch }}<\/NETCoreSdkPortableRuntimeIdentifier>/" ./Microsoft.NETCoreSdk.BundledVersions.props
 
-          sed -ri "s/(<KnownFrameworkReference.* DefaultRuntimeFrameworkVersion=\")${{ env.DOTNET_MAJOR_VERSION }}[^\"]*(\".* \/>)/\1$dotnetVersion\2/" ./Microsoft.NETCoreSdk.BundledVersions.props
-          sed -ri "s/(<KnownFrameworkReference.* LatestRuntimeFrameworkVersion=\")${{ env.DOTNET_MAJOR_VERSION }}[^\"]*(\".* \/>)/\1$dotnetVersion\2/" ./Microsoft.NETCoreSdk.BundledVersions.props
-          sed -ri "s/(<KnownFrameworkReference.* TargetingPackVersion=\")${{ env.DOTNET_MAJOR_VERSION }}[^\"]*(\".* \/>)/\1$dotnetVersion\2/" ./Microsoft.NETCoreSdk.BundledVersions.props
-          sed -ri "s/(<KnownFrameworkReference.* DefaultRuntimeFrameworkVersion=\"$dotnetVersion\".*RuntimePackRuntimeIdentifiers=\")([^\"]*)(\".* \/>)/\1\2;${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}\3/" ./Microsoft.NETCoreSdk.BundledVersions.props
+          sed -ri "s/(<KnownFrameworkReference.* DefaultRuntimeFrameworkVersion=\")${{ matrix.dotnet_major_version }}[^\"]*(\".* \/>)/\1$dotnetVersion\2/" ./Microsoft.NETCoreSdk.BundledVersions.props
+          sed -ri "s/(<KnownFrameworkReference.* LatestRuntimeFrameworkVersion=\")${{ matrix.dotnet_major_version }}[^\"]*(\".* \/>)/\1$dotnetVersion\2/" ./Microsoft.NETCoreSdk.BundledVersions.props
+          sed -ri "s/(<KnownFrameworkReference.* TargetingPackVersion=\")${{ matrix.dotnet_major_version }}[^\"]*(\".* \/>)/\1$dotnetVersion\2/" ./Microsoft.NETCoreSdk.BundledVersions.props
+          sed -ri "s/(<KnownFrameworkReference.* DefaultRuntimeFrameworkVersion=\"$dotnetVersion\".*RuntimePackRuntimeIdentifiers=\")([^\"]*)(\".* \/>)/\1\2;${{ matrix.dotnet_os }}-${{ matrix.dotnet_arch }}\3/" ./Microsoft.NETCoreSdk.BundledVersions.props
 
-          sed -ri "s/(<KnownAppHostPack.* AppHostPackVersion=\")${{ env.DOTNET_MAJOR_VERSION }}[^\"]*(\".* \/>)/\1$dotnetVersion\2/" ./Microsoft.NETCoreSdk.BundledVersions.props
-          sed -ri "s/(<KnownAppHostPack.* AppHostPackVersion=\"$dotnetVersion\".*AppHostRuntimeIdentifiers=\")([^\"]*)(\".* \/>)/\1\2;${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}\3/" ./Microsoft.NETCoreSdk.BundledVersions.props
+          sed -ri "s/(<KnownAppHostPack.* AppHostPackVersion=\")${{ matrix.dotnet_major_version }}[^\"]*(\".* \/>)/\1$dotnetVersion\2/" ./Microsoft.NETCoreSdk.BundledVersions.props
+          sed -ri "s/(<KnownAppHostPack.* AppHostPackVersion=\"$dotnetVersion\".*AppHostRuntimeIdentifiers=\")([^\"]*)(\".* \/>)/\1\2;${{ matrix.dotnet_os }}-${{ matrix.dotnet_arch }}\3/" ./Microsoft.NETCoreSdk.BundledVersions.props
 
           # Other packs (at the time of writing, crossgen2 and ilcompiler) are not supported on Haiku
 
@@ -132,16 +136,16 @@ jobs:
         run: |
           shopt -s extglob
           # SDK
-          cp -r ${{ github.workspace }}/sdk/artifacts/bin/redist/${{ matrix.configuration }}/dotnet/sdk ${{ github.workspace }}/output
+          cp -r ${{ github.workspace }}/sdk/artifacts/bin/redist/${{ matrix.dotnet_configuration }}/dotnet/sdk ${{ github.workspace }}/output
           # Templates
           dotnetVersion=${{ steps.version.outputs.version }}
           mkdir -p ${{ github.workspace }}/output/templates/$dotnetVersion
-          cp ${{ github.workspace }}/sdk/artifacts/packages/${{ matrix.configuration }}/Shipping/*Templates!(*symbols*).nupkg ${{ github.workspace }}/output/templates/$dotnetVersion
+          cp ${{ github.workspace }}/sdk/artifacts/packages/${{ matrix.dotnet_configuration }}/Shipping/*Templates!(*symbols*).nupkg ${{ github.workspace }}/output/templates/$dotnetVersion
 
       - name: Create .NET tarball
         run: |
           pushd ${{ github.workspace }}/output
-          fileName=${{ github.workspace }}/net${{ env.DOTNET_MAJOR_VERSION }}-${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}-${{ steps.buildid.outputs.buildid }}-${{ matrix.configuration }}
+          fileName=${{ github.workspace }}/net${{ matrix.dotnet_major_version }}-${{ matrix.dotnet_os }}-${{ matrix.dotnet_arch }}-${{ steps.buildid.outputs.buildid }}-${{ matrix.dotnet_configuration }}
           tar -cf $fileName.tar *
           gzip -9 < $fileName.tar > $fileName.tar.gz
           popd
@@ -149,34 +153,35 @@ jobs:
       - name: Upload .NET artifact
         uses: actions/upload-artifact@v3
         with:
-          name: net${{ env.DOTNET_MAJOR_VERSION }}-${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}-${{ steps.buildid.outputs.buildid }}-${{ matrix.configuration }}.tar
-          path: ${{ github.workspace }}/net${{ env.DOTNET_MAJOR_VERSION }}-${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}-${{ steps.buildid.outputs.buildid }}-${{ matrix.configuration }}.tar
+          name: net${{ matrix.dotnet_major_version }}-${{ matrix.dotnet_os }}-${{ matrix.dotnet_arch }}-${{ steps.buildid.outputs.buildid }}-${{ matrix.dotnet_configuration }}.tar
+          path: ${{ github.workspace }}/net${{ matrix.dotnet_major_version }}-${{ matrix.dotnet_os }}-${{ matrix.dotnet_arch }}-${{ steps.buildid.outputs.buildid }}-${{ matrix.dotnet_configuration }}.tar
 
       - name: Upload .NET NuGet packages artifact
         uses: actions/upload-artifact@v3
         with:
           name: dotnet-nuget
-          path: ${{ github.workspace }}/runtime/artifacts/packages/${{ matrix.configuration }}/Shipping/*.nupkg
+          path: ${{ github.workspace }}/runtime/artifacts/packages/${{ matrix.dotnet_configuration }}/Shipping/*.nupkg
 
       - name: Create release
+        if: ${{ github.ref == 'refs/heads/master' }}
         uses: marvinpinto/action-automatic-releases@latest
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          automatic_release_tag: net${{ env.DOTNET_MAJOR_VERSION }}-${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}-${{ steps.buildid.outputs.buildid }}-${{ matrix.configuration }}
+          automatic_release_tag: net${{ matrix.dotnet_major_version }}-${{ matrix.dotnet_os }}-${{ matrix.dotnet_arch }}-${{ steps.buildid.outputs.buildid }}-${{ matrix.dotnet_configuration }}
           prerelease: false
-          title: .NET ${{ env.DOTNET_MAJOR_VERSION }} for Haiku ${{ env.DOTNET_ARCH }} build ${{ steps.buildid.outputs.buildid }} ${{ matrix.configuration }}
+          title: .NET ${{ matrix.dotnet_major_version }} for Haiku ${{ matrix.dotnet_arch }} build ${{ steps.buildid.outputs.buildid }} ${{ matrix.dotnet_configuration }}
           files: |
-            ${{ github.workspace }}/runtime/artifacts/packages/${{ matrix.configuration }}/Shipping/*
-            ${{ github.workspace }}/sdk/artifacts/packages/${{ matrix.configuration }}/Shipping/*
-            ${{ github.workspace }}/net${{ env.DOTNET_MAJOR_VERSION }}-${{ env.DOTNET_OS }}-${{ env.DOTNET_ARCH }}-${{ steps.buildid.outputs.buildid }}-${{ matrix.configuration }}.tar.gz
+            ${{ github.workspace }}/runtime/artifacts/packages/${{ matrix.dotnet_configuration }}/Shipping/*
+            ${{ github.workspace }}/sdk/artifacts/packages/${{ matrix.dotnet_configuration }}/Shipping/*
+            ${{ github.workspace }}/net${{ matrix.dotnet_major_version }}-${{ matrix.dotnet_os }}-${{ matrix.dotnet_arch }}-${{ steps.buildid.outputs.buildid }}-${{ matrix.dotnet_configuration }}.tar.gz
 
       - name: Publish NuGet packages on GitHub
-        if: ${{ matrix.configuration == 'Release' }}
+        if: ${{ github.ref == 'refs/heads/master' && matrix.dotnet_configuration == 'Release' }}
         run: |
           shopt -s extglob
           dotnet nuget add source --username ${{ github.repository_owner }} --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
           # Do not upload symbol packages because:
           # - No debugging support on Haiku yet.
           # - Pushing symbols packages to GitHub Packages seems to fail with 403 Forbidden.
-          dotnet nuget push ${{ github.workspace }}/runtime/artifacts/packages/${{ matrix.configuration }}/Shipping/!(*symbols*).nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source "github"
-          dotnet nuget push ${{ github.workspace }}/sdk/artifacts/packages/${{ matrix.configuration }}/Shipping/!(*symbols*).nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source "github"
+          dotnet nuget push ${{ github.workspace }}/runtime/artifacts/packages/${{ matrix.dotnet_configuration }}/Shipping/!(*symbols*).nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source "github"
+          dotnet nuget push ${{ github.workspace }}/sdk/artifacts/packages/${{ matrix.dotnet_configuration }}/Shipping/!(*symbols*).nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source "github"
