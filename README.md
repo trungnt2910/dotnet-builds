@@ -13,16 +13,16 @@ Other components, notably ASP.NET and NativeAOT are not supported yet.
 
 ## Installation
 
-- Download a copy of `net8-haiku-x64-<randomly seeming build number>.tar.gz` from the latest [release](https://github.com/trungnt2910/dotnet-builds/releases/latest).
 - Install dependencies:
 ```sh
 pkgman install -y gmp krb5 libiconv llvm12_libunwind mpfr
+pkgman install -y jq # Required for the dotnet-install script.
 ```
-- Extract the archive to any folder and add it to the system's `$PATH`.
-- Add some hack environment variables mentioned [here](https://discuss.haiku-os.org/t/gsoc-2023-net-port/13237/39) to the `dotnet` binary:
+- Run the dotnet-install.sh script:
 ```sh
-addattr SYS:ENV "DOTNET_SYSTEM_NET_DISABLEIPV6=1\\0COMPlus_EnableWriteXorExecute=0" /path/to/where/you/extract/the/zip/file/dotnet
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/trungnt2910/dotnet-builds/HEAD/dotnet-install.sh)" -- --install-dir=/path/to/where/you/want/to/install/dotnet
 ```
+- Add the .NET installation folder to the system's `$PATH`.
 - Add a custom NuGet source containing essential Haiku-specific packages. `your_github_token` should be a [personal access token](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-nuget-registry#authenticating-to-github-packages) with at least the `read:packages` permission:
 ```sh
 dotnet nuget add source --username your_github_username --password your_github_token --store-password-in-clear-text --name dotnet_haiku_nuget "https://nuget.pkg.github.com/trungnt2910/index.json"
@@ -71,6 +71,10 @@ Not in the near future, because:
 - Unconventional installation layout. All of .NET lives in one directory, and it should be writable so that additional workloads or other optional components can be installed through NuGet, instead of being divided into `/bin`, `/lib`, etc. like other UNIX applications.
 
 More discussion can be found in [this](https://discuss.haiku-os.org/t/gsoc-2023-net-port/13237/44) forum comment and the following ones.
+
+### Why is this build so slow?
+
+This build of .NET is a **Debug** build. Release builds are currently provided but not selected by `dotnet-install.sh` because of some weird bugs like [this one](https://github.com/dotnet/runtime/issues/55803#issuecomment-1547175040).
 
 ## License
 
