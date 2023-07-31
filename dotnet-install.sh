@@ -61,8 +61,7 @@ do
         exit 2
     fi
     # Store array of revisions
-    # We choose Debug builds since Release builds are currently broken.
-    revisions=($(echo $json | jq -e -r ".[] | .html_url | select(contains(\"Debug\") and contains(\"$ARCHITECTURE\"))[${#releaseUrl}:]")) \
+    revisions=($(echo $json | jq -e -r ".[] | .html_url | select(contains(\"Release\") and contains(\"$ARCHITECTURE\"))[${#releaseUrl}:]")) \
         || continue
     latestRev=${revisions[0]}
 done
