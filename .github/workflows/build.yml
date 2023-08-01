@@ -143,6 +143,21 @@ jobs:
           mkdir -p ${{ github.workspace }}/output/templates/$dotnetVersion
           cp ${{ github.workspace }}/sdk/artifacts/packages/${{ matrix.dotnet_configuration }}/Shipping/*Templates!(*symbols*).nupkg ${{ github.workspace }}/output/templates/$dotnetVersion
 
+      - name: Clone MSBuild
+        run: git clone https://github.com/trungnt2910/dotnet-msbuild -b haiku-dotnet${{ matrix.dotnet_major_version }} --depth=1 ${{ github.workspace }}/msbuild
+
+      - name: Build MSBuild
+        run: |
+          # Do NOT set the OfficialBuildId property for this command. Otherwise, some build error related to some Microsoft internal NuGet feed will occur.
+          ${{ github.workspace }}/msbuild/build.sh --ci --pack --configuration ${{ matrix.dotnet_configuration }} /p:OSName=${{ matrix.dotnet_os }} /p:Architecture=${{ matrix.dotnet_arch }} /p:CreateBootstrap=true
+
+      - name: Copy MSBuild
+        run: |
+          sdkFeatureBand=$(ls ${{ github.workspace }}/output/sdk)
+          pwsh -File ${{ github.workspace }}/msbuild/scripts/Deploy-MSBuild.ps1 --configuration ${{ matrix.dotnet_configuration }} --runtime Core --destination ${{ github.workspace }}/output/sdk/$sdkFeatureBand
+          # Remove unwanted backups
+          rm -rf ${{ github.workspace }}/output/sdk/$sdkFeatureBand/Backup*
+
       - name: Create .NET tarball
         run: |
           pushd ${{ github.workspace }}/output
