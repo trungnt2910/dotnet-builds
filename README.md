@@ -8,6 +8,7 @@ At the time of writing, this repo currently builds a preview release of .NET 8.
 
 - [dotnet/runtime](https://github.com/trungnt2910/dotnet-runtime): .NET Runtime, ported to Haiku.
 - [dotnet/sdk](https://github.com/trungnt2910/dotnet-sdk): .NET SDK, ported to Haiku.
+- [dotnet/msbuild](https://github.com/trungnt2910/dotnet-msbuild): MSBuild, configured to recognize Haiku.
 
 Other components, notably ASP.NET and NativeAOT are not supported yet.
 
