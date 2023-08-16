@@ -26,7 +26,7 @@ jobs:
   build:
     strategy:
       matrix:
-        dotnet_major_version: [8]
+        dotnet_major_version: [8, 9]
         dotnet_arch: [x64]
         dotnet_os: [haiku]
         dotnet_configuration: [Debug, Release]
@@ -64,7 +64,7 @@ jobs:
                   exit 2
               fi
               # Store array of revisions
-              revisions=($(echo $json | jq -e -r ".[] | .html_url | select(contains(\"$today\") and contains(\"Release\"))[${#releaseUrl}:]")) \
+              revisions=($(echo $json | jq -e -r ".[] | .html_url | select(contains(\"$today\") and contains(\"${{ matrix.dotnet_configuration }}\") and contains(\"net${{ matrix.dotnet_major_version }}-\"))[${#releaseUrl}:]")) \
                   || continue
               latestRev=${revisions[0]}
               latestRev=${latestRev%-*}
@@ -175,7 +175,7 @@ jobs:
       - name: Upload .NET NuGet packages artifact
         uses: actions/upload-artifact@v3
         with:
-          name: dotnet-nuget
+          name: net${{ matrix.dotnet_major_version }}-${{ matrix.dotnet_os }}-${{ matrix.dotnet_arch }}-${{ steps.buildid.outputs.buildid }}-${{ matrix.dotnet_configuration }}-nuget
           path: ${{ github.workspace }}/runtime/artifacts/packages/${{ matrix.dotnet_configuration }}/Shipping/*.nupkg
 
       - name: Create release
