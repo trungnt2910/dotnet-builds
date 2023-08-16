@@ -4,29 +4,33 @@ GITHUB_SERVER_URL="https://github.com"
 GITHUB_API_URL="https://api.github.com"
 GITHUB_REPOSITORY="trungnt2910/dotnet-builds"
 
-for i in "$@"
-do
-case $i in
-    --architecture=*)
-    ARCHITECTURE="${i#*=}"
-    shift # past argument=value
+for (( i=1; i<=$#; i++)); do
+case ${!i} in
+    --architecture)
+    i=$((i+1))
+    ARCHITECTURE=${!i}
     ;;
-    --install-dir=*)
-    INSTALL_DIR="${i#*=}"
-    shift # past argument=value
+    --install-dir)
+    i=$((i+1))
+    INSTALL_DIR=${!i}
+    ;;
+    --channel)
+    i=$((i+1))
+    CHANNEL=${!i}
     ;;
     -h|--help)
     echo "Usage: dotnet-install.sh [options]"
     echo ""
     echo "Options:"
-    echo "  --architecture=<architecture>  Architecture of .NET to install"
-    echo "  --install-dir=<path>           Path where .NET will be installed"
+    echo "  --architecture <ARCHITECTURE>  Architecture of .NET to install"
+    echo "  --install-dir <DIRECTORY>      Path where .NET will be installed"
+    echo "  --channel <CHANNEL>            Source channel for the installation"
     echo "  -h|--help                      Display this help message"
     exit 0
     ;;
     *)
             # unknown option
-    echo "Unknown option: $i"
+    echo "Unknown option: ${!i}"
     exit 1
     ;;
 esac
@@ -42,6 +46,13 @@ fi
 if [ -z "$INSTALL_DIR" ]; then
     INSTALL_DIR=".dotnet"
 fi
+
+if [ -z "$CHANNEL" ]; then
+    CHANNEL="9.0"
+fi
+
+# Currently, the minor version is ignored
+CHANNEL_MAJOR=$(echo $CHANNEL | cut -d. -f1)
 
 latestRev=""
 releaseUrl="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/net"
@@ -61,13 +72,13 @@ do
         exit 2
     fi
     # Store array of revisions
-    revisions=($(echo $json | jq -e -r ".[] | .html_url | select(contains(\"Release\") and contains(\"$ARCHITECTURE\"))[${#releaseUrl}:]")) \
+    revisions=($(echo $json | jq -e -r ".[] | .html_url | select(contains(\"Release\") and contains(\"$ARCHITECTURE\") and contains(\"net$CHANNEL_MAJOR-\"))[${#releaseUrl}:]")) \
         || continue
     latestRev=${revisions[0]}
 done
 
 if [ -z "$latestRev" ]; then
-    echo "Unable to find a .NET release for $ARCHITECTURE"
+    echo "Unable to find a .NET $CHANNEL release for $ARCHITECTURE"
     exit 3
 fi
 

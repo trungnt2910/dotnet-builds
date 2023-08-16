@@ -4,7 +4,7 @@
 
 ## What's included
 
-At the time of writing, this repo currently builds a preview release of .NET 8.
+At the time of writing, this repo currently builds a preview release of .NET 8, or an early alpha version of .NET 9.
 
 - [dotnet/runtime](https://github.com/trungnt2910/dotnet-runtime): .NET Runtime, ported to Haiku.
 - [dotnet/sdk](https://github.com/trungnt2910/dotnet-sdk): .NET SDK, ported to Haiku.
@@ -21,7 +21,7 @@ pkgman install -y jq # Required for the dotnet-install script.
 ```
 - Run the dotnet-install.sh script:
 ```sh
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/trungnt2910/dotnet-builds/HEAD/dotnet-install.sh)" -- --install-dir=/path/to/where/you/want/to/install/dotnet
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/trungnt2910/dotnet-builds/HEAD/dotnet-install.sh)" -- --install-dir /path/to/where/you/want/to/install/dotnet
 ```
 - Add the .NET installation folder to the system's `$PATH`.
 - Add a custom NuGet source containing essential Haiku-specific packages. `your_github_token` should be a [personal access token](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-nuget-registry#authenticating-to-github-packages) with at least the `read:packages` permission:
