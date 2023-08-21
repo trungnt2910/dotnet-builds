@@ -82,7 +82,21 @@ jobs:
         run: ${{ github.workspace }}/runtime/eng/common/cross/build-rootfs.sh ${{ matrix.dotnet_arch }} ${{ matrix.dotnet_os }}
 
       - name: Build .NET Runtime
-        run: ${{ github.workspace }}/runtime/build.sh --ci -c ${{ matrix.dotnet_configuration }} -arch ${{ matrix.dotnet_arch }} -os ${{ matrix.dotnet_os }} -cross -gcc /p:OfficialBuildId=${{ steps.buildid.outputs.buildid }}
+        run: |
+          # The two properties, UseRidGraph and BundledRuntimeIdentifierGraphFile, are required after dotnet/runtime#90695.
+          # Without these properties set, the building SDK will no longer recognize Haiku as being derived from Unix, and will therefore
+          # reference incorrect libraries, causing build errors.
+          #
+          # Note that the properties, as well as the Microsoft.NETCore.Platforms project, might be removed in the near future.
+          # At that time, a Haiku-aware SDK might have to be built before building the runtime.
+          # Alternatively, we might be able to check out the dotnet/dotnet VMR for a source-build solution.
+          ${{ github.workspace }}/runtime/build.sh --ci \
+            -c ${{ matrix.dotnet_configuration }} \
+            -arch ${{ matrix.dotnet_arch }} \
+            -os ${{ matrix.dotnet_os }} -cross -gcc \
+            /p:OfficialBuildId=${{ steps.buildid.outputs.buildid }} \
+            /p:UseRidGraph=true \
+            /p:BundledRuntimeIdentifierGraphFile=${{ github.workspace }}/runtime/src/libraries/Microsoft.NETCore.Platforms/src/runtime.json
 
       - name: Determine .NET version
         id: version
