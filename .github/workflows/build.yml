@@ -37,8 +37,6 @@ jobs:
 
       - name: Chuck out the trash
         uses: insightsengineering/disk-space-reclaimer@v1
-        with:
-          dotnet: false
 
       - name: Install build dependencies
         run: sudo apt install -y liblttng-ust-dev powershell
@@ -209,7 +207,7 @@ jobs:
         if: ${{ github.ref == 'refs/heads/master' && matrix.dotnet_configuration == 'Release' }}
         run: |
           shopt -s extglob
-          dotnet nuget add source --username ${{ github.repository_owner }} --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
+          ${{ github.workspace }}/runtime/.dotnet/dotnet nuget add source --username ${{ github.repository_owner }} --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
           # Do not upload symbol packages because:
           # - No debugging support on Haiku yet.
           # - Pushing symbols packages to GitHub Packages seems to fail with 403 Forbidden.
