@@ -41,7 +41,7 @@ jobs:
           dotnet: false
 
       - name: Install build dependencies
-        run: sudo apt install -y liblttng-ust-dev
+        run: sudo apt install -y liblttng-ust-dev powershell
 
       - name: Determine build ID
         id: buildid
