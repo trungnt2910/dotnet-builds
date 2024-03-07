@@ -35,13 +35,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
+      - name: Chuck out the trash
+        uses: insightsengineering/disk-space-reclaimer@v1
+        with:
+          dotnet: false
+
       - name: Install build dependencies
         run: sudo apt install -y liblttng-ust-dev
-
-      # See https://github.com/actions/virtual-environments/issues/2606#issuecomment-772683150
-      - name: Chuck out the trash
-        run: |
-          sudo rm -rf /usr/local/lib/android # will release about 10 GB if you don't need Android
 
       - name: Determine build ID
         id: buildid
