@@ -213,5 +213,5 @@ jobs:
           # Do not upload symbol packages because:
           # - No debugging support on Haiku yet.
           # - Pushing symbols packages to GitHub Packages seems to fail with 403 Forbidden.
-          dotnet nuget push ${{ github.workspace }}/runtime/artifacts/packages/${{ matrix.dotnet_configuration }}/Shipping/!(*symbols*).nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source "github"
-          dotnet nuget push ${{ github.workspace }}/sdk/artifacts/packages/${{ matrix.dotnet_configuration }}/Shipping/!(*symbols*).nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source "github"
+          dotnet nuget push ${{ github.workspace }}/runtime/artifacts/packages/${{ matrix.dotnet_configuration }}/Shipping/!(*symbols*).nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source "github" --skip-duplicate
+          dotnet nuget push ${{ github.workspace }}/sdk/artifacts/packages/${{ matrix.dotnet_configuration }}/Shipping/!(*symbols*).nupkg --api-key ${{ secrets.GITHUB_TOKEN }} --source "github" --skip-duplicate
