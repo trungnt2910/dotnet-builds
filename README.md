@@ -4,7 +4,8 @@
 
 ## What's included
 
-At the time of writing, this repo currently builds a preview release of .NET 8, or an early alpha version of .NET 9.
+At the time of writing, this repo currently builds .NET 8, .NET 9, or early alpha versions of
+.NET 10.
 
 - [dotnet/runtime](https://github.com/trungnt2910/dotnet-runtime): .NET Runtime, ported to Haiku.
 - [dotnet/sdk](https://github.com/trungnt2910/dotnet-sdk): .NET SDK, ported to Haiku.
