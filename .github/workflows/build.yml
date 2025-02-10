@@ -179,13 +179,13 @@ jobs:
           popd
 
       - name: Upload .NET artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: net${{ matrix.dotnet_major_version }}-${{ matrix.dotnet_os }}-${{ matrix.dotnet_arch }}-${{ steps.buildid.outputs.buildid }}-${{ matrix.dotnet_configuration }}.tar
           path: ${{ github.workspace }}/net${{ matrix.dotnet_major_version }}-${{ matrix.dotnet_os }}-${{ matrix.dotnet_arch }}-${{ steps.buildid.outputs.buildid }}-${{ matrix.dotnet_configuration }}.tar
 
       - name: Upload .NET NuGet packages artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: net${{ matrix.dotnet_major_version }}-${{ matrix.dotnet_os }}-${{ matrix.dotnet_arch }}-${{ steps.buildid.outputs.buildid }}-${{ matrix.dotnet_configuration }}-nuget
           path: ${{ github.workspace }}/runtime/artifacts/packages/${{ matrix.dotnet_configuration }}/Shipping/*.nupkg
