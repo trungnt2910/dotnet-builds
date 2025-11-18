@@ -88,13 +88,16 @@ jobs:
           # Note that the properties, as well as the Microsoft.NETCore.Platforms project, might be removed in the near future.
           # At that time, a Haiku-aware SDK might have to be built before building the runtime.
           # Alternatively, we might be able to check out the dotnet/dotnet VMR for a source-build solution.
+          #
+          # UseAppHost=false is required for builds using .NET SDK after dotnet/sdk#50421.
           ${{ github.workspace }}/runtime/build.sh --ci \
             -c ${{ matrix.dotnet_configuration }} \
             -arch ${{ matrix.dotnet_arch }} \
             -os ${{ matrix.dotnet_os }} -cross -gcc \
             /p:OfficialBuildId=${{ steps.buildid.outputs.buildid }} \
             /p:UseRidGraph=true \
-            /p:BundledRuntimeIdentifierGraphFile=${{ github.workspace }}/runtime/src/libraries/Microsoft.NETCore.Platforms/src/runtime.json
+            /p:BundledRuntimeIdentifierGraphFile=${{ github.workspace }}/runtime/src/libraries/Microsoft.NETCore.Platforms/src/runtime.json \
+            /p:UseAppHost=false
 
       - name: Determine .NET version
         id: version
