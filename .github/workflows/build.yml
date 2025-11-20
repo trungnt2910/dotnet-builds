@@ -101,8 +101,7 @@ jobs:
             $FLAGS_NET10_0_OR_GREATER \
             /p:OfficialBuildId=${{ steps.buildid.outputs.buildid }} \
             /p:UseRidGraph=true \
-            /p:BundledRuntimeIdentifierGraphFile=${{ github.workspace }}/runtime/src/libraries/Microsoft.NETCore.Platforms/src/runtime.json \
-            /p:UseAppHost=false
+            /p:BundledRuntimeIdentifierGraphFile=${{ github.workspace }}/runtime/src/libraries/Microsoft.NETCore.Platforms/src/runtime.json
 
       - name: Determine .NET version
         id: version
