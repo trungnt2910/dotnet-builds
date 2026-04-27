@@ -146,7 +146,36 @@ jobs:
 
       - name: Build .NET SDK
         run: |
-          ${{ github.workspace }}/sdk/build.sh --ci --pack -c ${{ matrix.dotnet_configuration }} /p:OSName=${{ matrix.dotnet_os }} /p:Architecture=${{ matrix.dotnet_arch }} /p:OfficialBuildId=${{ steps.buildid.outputs.buildid }}
+          FLAGS=""
+
+          # Always disable Crossgen for old .NET versions.
+          # Otherwise, we will leak Linux binaries into Haiku packages.
+          if [ "${{ matrix.dotnet_major_version }}" -eq "9" ]; then
+            # Old method to disable Crossgen
+            export DISABLE_CROSSGEN=true
+          fi
+          if [ "${{ matrix.dotnet_major_version }}" -eq "10" ]; then
+            # New method to disable Crossgen
+            FLAGS="$FLAGS /p:SkipUsingCrossgen=true"
+          fi
+
+          if [ "${{ matrix.dotnet_major_version }}" -lt "11" ]; then
+            # Old hacks that did not really have any effect.
+            FLAGS="$FLAGS /p:OSName=${{ matrix.dotnet_os }}"
+            FLAGS="$FLAGS /p:Architecture=${{ matrix.dotnet_arch }}"
+          else
+            # Official way to pass in a different OS since dotnet/sdk#53549
+            FLAGS="$FLAGS -os ${{ matrix.dotnet_os }} -arch ${{ matrix.dotnet_arch }}"
+
+            # Disable Crossgen until dotnet/runtime#127431 lands and gets published.
+            # On .NET 11+ --pack forces SkipUsingCrossgen=false.
+            FLAGS="$FLAGS -skipCrossgen"
+          fi
+
+          ${{ github.workspace }}/sdk/build.sh --ci --pack \
+            -c ${{ matrix.dotnet_configuration }} \
+            /p:OfficialBuildId=${{ steps.buildid.outputs.buildid }} \
+            $FLAGS
 
           dotnetVersion=${{ steps.version.outputs.version }}
           sdkFeatureBand=$(ls ${{ github.workspace }}/sdk/artifacts/bin/redist/${{ matrix.dotnet_configuration }}/dotnet/sdk)
