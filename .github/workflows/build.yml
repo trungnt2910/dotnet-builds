@@ -92,6 +92,11 @@ jobs:
             # errors.
             FLAGS="$FLAGS /p:UseRidGraph=true"
             FLAGS="$FLAGS /p:BundledRuntimeIdentifierGraphFile=${{ github.workspace }}/runtime/src/libraries/Microsoft.NETCore.Platforms/src/runtime.json"
+
+            # .NET 11+ supports building with Clang instead of GCC. See dotnet/runtime#127392.
+            # .NET 10 requires Clang builds. Haiku GCC toolchain has a weird bug where -fno-rtti
+            # fails to remove RTTI symbols for Debug builds. 
+            FLAGS="$FLAGS -gcc"
           else
             # .NET 10+ runtime builds will not accept RIDs unknown to the SDK.
             # haiku-x64 RID is only added in .NET 11.
@@ -109,11 +114,6 @@ jobs:
               # For older .NET releases, the "-bootstrap" option does not exist.
               FLAGS="$FLAGS -bootstrap"
             popd
-          fi
-
-          if [ "${{ matrix.dotnet_major_version }}" -lt "11" ]; then
-            # .NET 11+ suppots building with Clang instead of GCC. See dotnet/runtime#127392.
-            FLAGS="$FLAGS -gcc"
           fi
 
           # We need to be in the source directory to get the correct NuGet.config.
