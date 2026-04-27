@@ -48,7 +48,7 @@ if [ -z "$INSTALL_DIR" ]; then
 fi
 
 if [ -z "$CHANNEL" ]; then
-    CHANNEL="9.0"
+    CHANNEL="10.0"
 fi
 
 # Currently, the minor version is ignored
