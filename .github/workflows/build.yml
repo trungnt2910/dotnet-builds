@@ -17,6 +17,7 @@ permissions:
 
 env:
   ROOTFS_DIR: ${{ github.workspace }}/dotnet-rootfs
+  HAIKU_DOTNET_LATEST_MAJOR_VERSION: 10
 
 concurrency:
   group: ${{ github.ref }}
@@ -211,12 +212,11 @@ jobs:
 
       - name: Create release
         if: ${{ github.ref == 'refs/heads/master' }}
-        uses: marvinpinto/action-automatic-releases@latest
+        uses: softprops/action-gh-release@v3
         with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          automatic_release_tag: net${{ matrix.dotnet_major_version }}-${{ matrix.dotnet_os }}-${{ matrix.dotnet_arch }}-${{ steps.buildid.outputs.buildid }}-${{ matrix.dotnet_configuration }}
-          prerelease: false
+          tag_name: net${{ matrix.dotnet_major_version }}-${{ matrix.dotnet_os }}-${{ matrix.dotnet_arch }}-${{ steps.buildid.outputs.buildid }}-${{ matrix.dotnet_configuration }}
           title: .NET ${{ matrix.dotnet_major_version }} for Haiku ${{ matrix.dotnet_arch }} build ${{ steps.buildid.outputs.buildid }} ${{ matrix.dotnet_configuration }}
+          make_latest: ${{ matrix.dotnet_major_version == fromJSON(env.HAIKU_DOTNET_LATEST_MAJOR_VERSION) && matrix.dotnet_configuration == 'Release' }}
           files: |
             ${{ github.workspace }}/runtime/artifacts/packages/${{ matrix.dotnet_configuration }}/Shipping/*
             ${{ github.workspace }}/sdk/artifacts/packages/${{ matrix.dotnet_configuration }}/Shipping/*
