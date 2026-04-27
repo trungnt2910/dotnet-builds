@@ -215,7 +215,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: net${{ matrix.dotnet_major_version }}-${{ matrix.dotnet_os }}-${{ matrix.dotnet_arch }}-${{ steps.buildid.outputs.buildid }}-${{ matrix.dotnet_configuration }}
-          title: .NET ${{ matrix.dotnet_major_version }} for Haiku ${{ matrix.dotnet_arch }} build ${{ steps.buildid.outputs.buildid }} ${{ matrix.dotnet_configuration }}
+          name: .NET ${{ matrix.dotnet_major_version }} for Haiku ${{ matrix.dotnet_arch }} build ${{ steps.buildid.outputs.buildid }} ${{ matrix.dotnet_configuration }}
           make_latest: ${{ matrix.dotnet_major_version == fromJSON(env.HAIKU_DOTNET_LATEST_MAJOR_VERSION) && matrix.dotnet_configuration == 'Release' }}
           files: |
             ${{ github.workspace }}/runtime/artifacts/packages/${{ matrix.dotnet_configuration }}/Shipping/*
