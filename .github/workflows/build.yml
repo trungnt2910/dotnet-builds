@@ -84,6 +84,14 @@ jobs:
         run: |
           FLAGS=""
 
+          if [ "${{ matrix.dotnet_major_version }}" -lt "9" ]; then
+            # .NET 11+ supports building with Clang instead of GCC. See dotnet/runtime#127392.
+            # .NET 9 & 10 require Clang builds. Haiku GCC toolchain has a weird bug where
+            # -fno-rtti fails to remove RTTI symbols for Debug builds.
+            # Therefore, dotnet/runtime#127392 has been backported to these versions.
+            FLAGS="$FLAGS -gcc"
+          fi
+
           if [ "${{ matrix.dotnet_major_version }}" -lt "10" ]; then
             # The two properties, UseRidGraph and BundledRuntimeIdentifierGraphFile, are required
             # after dotnet/runtime#90695.
@@ -92,11 +100,6 @@ jobs:
             # errors.
             FLAGS="$FLAGS /p:UseRidGraph=true"
             FLAGS="$FLAGS /p:BundledRuntimeIdentifierGraphFile=${{ github.workspace }}/runtime/src/libraries/Microsoft.NETCore.Platforms/src/runtime.json"
-
-            # .NET 11+ supports building with Clang instead of GCC. See dotnet/runtime#127392.
-            # .NET 10 requires Clang builds. Haiku GCC toolchain has a weird bug where -fno-rtti
-            # fails to remove RTTI symbols for Debug builds. 
-            FLAGS="$FLAGS -gcc"
           else
             # .NET 10+ runtime builds will not accept RIDs unknown to the SDK.
             # haiku-x64 RID is only added in .NET 11.
