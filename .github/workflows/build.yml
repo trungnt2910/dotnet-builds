@@ -81,10 +81,22 @@ jobs:
 
       - name: Build .NET Runtime
         run: |
-          # This is required for builds using .NET SDK after dotnet/sdk#50421.
-          # For older .NET releases, the "-bootstrap" option does not exist.
+          # .NET 10+ runtime builds will not accept RIDs unknown to the SDK.
+          # haiku-x64 RID is only added in .NET 11.
           if [ "${{ matrix.dotnet_major_version }}" -ge "10" ]; then
+            pushd ${{ github.workspace }}/runtime
+
+            # Trigger an initial .NET SDK installation. --info to ensure 0 status code.
+            ./dotnet.sh --info
+
+            # Add the RID to known identifier list. May result in duplicates.
+            sed -Eis 's/(AppHostRuntimeIdentifiers=")([^"]*)(")/\1\2;${{ matrix.dotnet_os }}-${{ matrix.dotnet_arch }}\3/g' .dotnet/sdk/*/Microsoft.NETCoreSdk.BundledVersions.props
+
+            # This is required for builds using .NET SDK after dotnet/sdk#50421.
+            # For older .NET releases, the "-bootstrap" option does not exist.
             FLAGS_NET10_0_OR_GREATER="-bootstrap"
+
+            popd
           fi
 
           # The two properties, UseRidGraph and BundledRuntimeIdentifierGraphFile, are required after dotnet/runtime#90695.
