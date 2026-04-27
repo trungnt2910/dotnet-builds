@@ -116,12 +116,16 @@ jobs:
             FLAGS="$FLAGS -gcc"
           fi
 
-          ${{ github.workspace }}/runtime/build.sh --ci \
+          # We need to be in the source directory to get the correct NuGet.config.
+          # Otherwise, we will not have access to Microsoft packages.
+          pushd ${{ github.workspace }}/runtime
+          ./build.sh --ci \
             -c ${{ matrix.dotnet_configuration }} \
             -arch ${{ matrix.dotnet_arch }} \
             -os ${{ matrix.dotnet_os }} -cross \
             $FLAGS \
             /p:OfficialBuildId=${{ steps.buildid.outputs.buildid }}
+          popd
 
       - name: Determine .NET version
         id: version
