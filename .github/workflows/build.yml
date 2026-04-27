@@ -40,7 +40,7 @@ jobs:
         uses: insightsengineering/disk-space-reclaimer@v1
 
       - name: Install build dependencies
-        run: sudo apt install -y liblttng-ust-dev powershell
+        run: sudo apt-get install -y liblttng-ust-dev powershell clang lld
 
       - name: Determine build ID
         id: buildid
