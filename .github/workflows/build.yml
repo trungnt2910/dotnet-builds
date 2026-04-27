@@ -27,7 +27,7 @@ jobs:
   build:
     strategy:
       matrix:
-        dotnet_major_version: [8, 9, 10]
+        dotnet_major_version: [8, 9, 10, 11]
         dotnet_arch: [x64]
         dotnet_os: [haiku]
         dotnet_configuration: [Debug, Release]
@@ -82,39 +82,46 @@ jobs:
 
       - name: Build .NET Runtime
         run: |
-          # .NET 10+ runtime builds will not accept RIDs unknown to the SDK.
-          # haiku-x64 RID is only added in .NET 11.
-          if [ "${{ matrix.dotnet_major_version }}" -ge "10" ]; then
+          FLAGS=""
+
+          if [ "${{ matrix.dotnet_major_version }}" -lt "10" ]; then
+            # The two properties, UseRidGraph and BundledRuntimeIdentifierGraphFile, are required
+            # after dotnet/runtime#90695.
+            # Without these properties set, the building SDK will no longer recognize Haiku as being
+            # derived from Unix, and will therefore reference incorrect libraries, causing build
+            # errors.
+            FLAGS="$FLAGS /p:UseRidGraph=true"
+            FLAGS="$FLAGS /p:BundledRuntimeIdentifierGraphFile=${{ github.workspace }}/runtime/src/libraries/Microsoft.NETCore.Platforms/src/runtime.json"
+          else
+            # .NET 10+ runtime builds will not accept RIDs unknown to the SDK.
+            # haiku-x64 RID is only added in .NET 11.
+
             pushd ${{ github.workspace }}/runtime
+              # Trigger an initial .NET SDK installation. --info to ensure 0 status code.
+              ./dotnet.sh --info
 
-            # Trigger an initial .NET SDK installation. --info to ensure 0 status code.
-            ./dotnet.sh --info
+              # Add the RID to known identifier list. May result in duplicates.
+              sed -Eis \
+                's/(AppHostRuntimeIdentifiers=")([^"]*)(")/\1\2;${{ matrix.dotnet_os }}-${{ matrix.dotnet_arch }}\3/g' \
+                .dotnet/sdk/*/Microsoft.NETCoreSdk.BundledVersions.props
 
-            # Add the RID to known identifier list. May result in duplicates.
-            sed -Eis 's/(AppHostRuntimeIdentifiers=")([^"]*)(")/\1\2;${{ matrix.dotnet_os }}-${{ matrix.dotnet_arch }}\3/g' .dotnet/sdk/*/Microsoft.NETCoreSdk.BundledVersions.props
-
-            # This is required for builds using .NET SDK after dotnet/sdk#50421.
-            # For older .NET releases, the "-bootstrap" option does not exist.
-            FLAGS_NET10_0_OR_GREATER="-bootstrap"
-
+              # This is required for builds using .NET SDK after dotnet/sdk#50421.
+              # For older .NET releases, the "-bootstrap" option does not exist.
+              FLAGS="$FLAGS -bootstrap"
             popd
           fi
 
-          # The two properties, UseRidGraph and BundledRuntimeIdentifierGraphFile, are required after dotnet/runtime#90695.
-          # Without these properties set, the building SDK will no longer recognize Haiku as being derived from Unix, and will therefore
-          # reference incorrect libraries, causing build errors.
-          #
-          # Note that the properties, as well as the Microsoft.NETCore.Platforms project, might be removed in the near future.
-          # At that time, a Haiku-aware SDK might have to be built before building the runtime.
-          # Alternatively, we might be able to check out the dotnet/dotnet VMR for a source-build solution.
+          if [ "${{ matrix.dotnet_major_version }}" -lt "11" ]; then
+            # .NET 11+ suppots building with Clang instead of GCC. See dotnet/runtime#127392.
+            FLAGS="$FLAGS -gcc"
+          fi
+
           ${{ github.workspace }}/runtime/build.sh --ci \
             -c ${{ matrix.dotnet_configuration }} \
             -arch ${{ matrix.dotnet_arch }} \
-            -os ${{ matrix.dotnet_os }} -cross -gcc \
-            $FLAGS_NET10_0_OR_GREATER \
-            /p:OfficialBuildId=${{ steps.buildid.outputs.buildid }} \
-            /p:UseRidGraph=true \
-            /p:BundledRuntimeIdentifierGraphFile=${{ github.workspace }}/runtime/src/libraries/Microsoft.NETCore.Platforms/src/runtime.json
+            -os ${{ matrix.dotnet_os }} -cross \
+            $FLAGS \
+            /p:OfficialBuildId=${{ steps.buildid.outputs.buildid }}
 
       - name: Determine .NET version
         id: version
