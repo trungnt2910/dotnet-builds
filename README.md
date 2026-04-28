@@ -4,8 +4,13 @@
 
 ## What's included
 
-At the time of writing, this repo currently builds .NET 8, .NET 9, or .NET 10.
+At the time of writing, this repo currently builds:
+- .NET 8 (LTS)
+- .NET 9 (STS)
+- .NET 10 (LTS)
+- .NET 11 (Preview)
 
+The components involved are:
 - [dotnet/runtime](https://github.com/trungnt2910/dotnet-runtime): .NET Runtime, ported to Haiku.
 - [dotnet/sdk](https://github.com/trungnt2910/dotnet-sdk): .NET SDK, ported to Haiku.
 - [dotnet/msbuild](https://github.com/trungnt2910/dotnet-msbuild): MSBuild, configured to recognize Haiku.
